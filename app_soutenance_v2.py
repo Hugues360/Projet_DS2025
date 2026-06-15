@@ -68,7 +68,7 @@ def load_data():
     data = {}
 
     raw_path = Path("data/ech_annonces_ventes_68.csv")
-    data["raw"] = pd.read_csv(raw_path, sep=";", index_col="idannonce") if raw_path.exists() else None
+    data["raw"] = pd.read_csv(raw_path, sep=";", index_col="idannonce")
 
     files = {
         "X_train_scaled": "Notebook_X_train_scaled.csv",
@@ -80,8 +80,7 @@ def load_data():
     }
 
     for k, f in files.items():
-        p = Path(f)
-        data[k] = pd.read_csv(p, index_col="idannonce") if p.exists() else None
+        data[k] = pd.read_csv(Path(f), index_col="idannonce")
 
     return data
 
@@ -157,17 +156,17 @@ X_test = data["X_test"]
 y_train = to_series(data["y_train"])
 y_test = to_series(data["y_test"])
 
-st.title("🏠 Projet Compagnon Immobilier — Soutenance 20 min")
+st.title("🏠/🏢 Projet Compagnon Immobilier — Data Scientist #2 Orange")
 
 if any(x is None for x in [X_train_scaled, X_test_scaled, X_train, X_test, y_train, y_test]):
     st.error("Fichiers manquants. Vérifie les CSV exportés depuis le notebook.")
     st.stop()
 
 # harmonisation index
-for d in [X_train_scaled, X_test_scaled, X_train, X_test]:
-    d.index = d.index.astype(str)
-for s in [y_train, y_test]:
-    s.index = s.index.astype(str)
+#for d in [X_train_scaled, X_test_scaled, X_train, X_test]:
+#    d.index = d.index.astype(str)
+#for s in [y_train, y_test]:
+#    s.index = s.index.astype(str)
 
 models = train_models(X_train_scaled, y_train)
 pred_df = build_predictions(models, X_test_scaled, y_test)
@@ -192,86 +191,363 @@ section = st.sidebar.radio(
 # SECTION 1
 # ==========================================================
 if section == "1. Contexte & données":
-    st.header("1) Contexte & topologie des données")
+    st.header("1) Contexte & données")
+
+    st.success(
+        """
+        **Objectif :** Prédire le prix d’un bien à partir de ses caractéristiques.  
+        **Données :** Repository Git ([klopstock-dviz/immo_vis](https://github.com/klopstock-dviz/immo_vis)).  
+        **Périmètre :** 27K annonces immobilières de maisons et appartements dans le Haut-Rhin entre 2019 et 2023.  
+        """
+    )
 
     if raw is None:
         st.info("Dataset brut non disponible.")
     else:
-        c1, c2, c3 = st.columns(3)
+
+        st.subheader("Pour ce projet nous nous basons sur le fichier data/ech_annonces_ventes_68.csv ([Github](https://raw.githubusercontent.com/klopstock-dviz/immo_vis/master/data/ech_annonces_ventes_68.csv))")
+
+        c1, c2, c3, c4 = st.columns(4)
         c1.metric("Nb annonces", f"{len(raw):,}".replace(",", " "))
         c2.metric("Nb variables", raw.shape[1])
-        c3.metric("Période", "2019-2023")
+        c3.metric("Variable cible", "prix_bien")
+        c4.metric("Période", "2019-2023")
 
-        col1, col2 = st.columns(2)
-        with col1:
-            fig, ax = plt.subplots(figsize=(7, 4))
-            sns.histplot(raw["prix_bien"], bins=60, kde=True, ax=ax)
-            ax.set_title("Distribution du prix_bien")
-            st.pyplot(fig)
+        st.markdown("---")
+        st.header("Découverte & exploration des données brutes :")
+        
+        with st.expander("50 premières lignes du Dataframe brut :"):
+            st.dataframe(raw.head(50))
 
-        with col2:
-            if "surface" in raw.columns:
-                fig, ax = plt.subplots(figsize=(7, 4))
-                sns.histplot(raw["surface"].dropna(), bins=60, kde=True, ax=ax)
-                ax.set_title("Distribution de la surface")
-                st.pyplot(fig)
+        c1, c2 = st.columns(2)
+        c1.metric("Nombre de variable quantitative", len(raw.select_dtypes(include=["number","bool"]).columns.tolist()))
+        c2.metric("Nombre de variable qualitative", len(raw.select_dtypes(include=["object"]).columns.tolist()))
 
-        quanti = [c for c in ["prix_bien", "surface", "nbpieces", "nbchambres", "etage", "nb_etages"] if c in raw.columns]
-        if len(quanti) >= 2:
-            st.subheader("Corrélations (variables quantitatives)")
-            corr = raw[quanti].corr(numeric_only=True)
-            fig, ax = plt.subplots(figsize=(7, 5))
-            sns.heatmap(corr, annot=True, fmt=".2f", cmap="coolwarm", ax=ax)
-            st.pyplot(fig)
+        with st.expander("Top 20 des variables avec des valeurs manquantes"):
+            na_ratio = (raw.isna().mean() * 100).sort_values(ascending=False).head(20)
+            st.dataframe(na_ratio.to_frame("% NA"))
 
-        if "surface" in raw.columns:
-            st.subheader("Regplot : surface vs prix")
-            fig, ax = plt.subplots(figsize=(7, 4))
-            sample = raw.dropna(subset=["surface", "prix_bien"]).sample(min(4000, len(raw)), random_state=42)
-            sns.regplot(data=sample, x="surface", y="prix_bien", scatter_kws={"alpha":0.2, "s":10}, line_kws={"color":"red"}, ax=ax)
-            st.pyplot(fig)
+        with st.expander("Tableau descriptif des variables"):
+            st.markdown(
+                """
+                | **Nom de la variable**             | **Description**                                                                                     |
+                |-------------------------------------|-----------------------------------------------------------------------------------------------------|
+                | **type_annonceur**                  | Catégorie : `'pr'` (PRO), `'pa'` (PARTICULIER).                                                    |
+                | **typedebien**                      | Catégorie : `'m'` (Maison), `'a'` (Appartement), `'l'` (Lot), `'mn'` (Maison ?), `'an'` (Appartement ?). |
+                | **typedetransaction**                | Catégorie : `'v'` (Vente), `'lt'`, `'vp'`, `'pi'` (à préciser).                                    |
+                | **etage**                           | Numérique : étage du bien. -1 à 999 (médiane 0, moyenne 1.3).                                       |
+                | **surface**                        | Surface en m² : 2 à 980 (médiane 95, moyenne 108.3).                                                 |
+                | **surface_terrain**                | Surface du terrain en m² : 1 à 431 600 (médiane 589, moyenne 1017.4).                              |
+                | **nb_pieces**                      | Nombre de pièces : 1 à 43 (médiane 4, moyenne 4.5).                                                   |
+                | **prix_bien**                      | Prix en € : de 1^3 à 3.3^6 (médiane 2.4^5, moyenne 2.7^5).                                           |
+                | **prix_maison**                    | Prix de la maison en € : 86 000 à 514 999 (médiane 199 620, moyenne 213 134.4). (peu de valeurs)   |
+                | **prix_terrain**                   | Prix du terrain en € : 1 à 320 000 (médiane 87 000, moyenne 89 757.5). (peu de valeurs)            |
+                | **mensualiteFinance**              | Remboursement mensuel : 0 à 7 715 (médiane 0, moyenne 13.2). Beaucoup de zéros.                   |
+                | **balcon**                         | Nombre de balcons : 0 à 8 (médiane 0, moyenne 0.28). Beaucoup de valeurs nulles.                  |
+                | **eau**                            | Nombre de salles d’eau : 0 à 10 (médiane 0, moyenne 0.28).                                           |
+                | **bain**                           | Nombre de salles de bain : 0 à 12 (médiane 1, moyenne 0.68).                                         |
+                | **dpeL**                          | Classe DPE : `'D'`, `'E'`, `'C'`, `'VI'`, `'0'`, `'B'`, `'F'`, `'NS'`, `'A'`, `'G'`.             |
+                | **dpeC**                          | Score DPE : 0 à 988 (médiane 196, moyenne 205).                                                      |
+                | **mapCoordonneesLatitude**        | Latitude GPS : 47.4 à 48.3. (Haut-Rhin)                                                               |
+                | **mapCoordonneesLongitude**       | Longitude GPS : 6.85 à 7.61. (Haut-Rhin)                                                              |
+                | **annonce_exclusive**             | Modalités : `'0'`, `'Oui'`, `'Non'`.                                                                |
+                | **nb_etages**                     | Nombre d’étages : 0 à 36 (médiane 2, moyenne 2.87).                                                    |
+                | **parking**                       | Variable vide (à vérifier).                                                                         |
+                | **places_parking**                | Places de parking : 0 à 35 (médiane 2, moyenne 1.98).                                                  |
+                | **cave**                          | Présence d’une cave : True / False.                                                                   |
+                | **exposition**                    | Orientation : nombreuses modalités (ex. `'Sud'`, `'Nord'`, `'Est'`, `'Ouest'`, etc.), beaucoup de valeurs nulles. |
+                | **ges_class**                     | Classe GES : `'D'`, `'E'`, `'C'`, `'B'`, `'A'`, `'F'`, `'VI'`, `'G'`, `'NS'`.                        |
+                | **annee_construction**            | Année de construction : 971 à 2025 (médiane 1978).                                                     |
+                | **nb_toilettes**                  | Nombre de toilettes : 0 à 15 (médiane 1).                                                              |
+                | **nb_terraces**                   | Nombre de terrasses : 0 à 14 (médiane 1).                                                               |
+                | **videophone**                     | Présence de videophone : True / False.                                                                  |
+                | **porte_digicode**                 | Présence d’un digicode : True / False.                                                                   |
+                | **surface_balcon**                 | Surface des balcons en m² : 1 à 801 (médiane 10, moyenne 12.48). Beaucoup de valeurs manquantes.     |
+                | **ascenseur**                      | Présence d’un ascenseur : True / False. (beaucoup de valeurs manquantes)                              |
+                | **nb_logements_copro**             | Nombre de logements en copropriété : 0 à 3442 (médiane 24). Beaucoup de valeurs manquantes.        |
+                | **charges_copro**                   | Charges copro en € : 0 à 2.5^6 (médiane 1.2^3, moyenne 1.8^3). Beaucoup de valeurs manquantes.       |
+                | **chauffage_energie**               | Type de chauffage : modalités variées, beaucoup de valeurs manquantes.                              |
+                | **chauffage_systeme**                | Système de chauffage : modalités variées, beaucoup de valeurs manquantes.                         |
+                | **chauffage_mode**                   | Mode de chauffage : modalités variées, beaucoup de valeurs manquantes.                            |
+                | **categorie_annonceur**             | Catégorie d’annonceur : `'a'`, `'b'`, `'ca'`, `'cm'`, `'m'`, `'network'`. La majorité est `'a'`.   |
+                | **logement_neuf**                  | Logement neuf : `'n'` (non), `'o'` (oui). 13% des ventes concernent des logements neufs.             |
+                | **duree_int**                     | Variable à interpréter (distribution bimodale autour de -850 et 100).                              |
+                | **typedebien_lite**                | Version simplifiée : `'a'` (Appartement), `'m'` (Maison), `'l'` (Lot).                              |
+                | **date**                          | Date de publication : à convertir en format date.                                                    |
+                | **INSEE_COM**                     | Code postal : plus de 300 modalités, à analyser pour regroupement.                                |
+                | **IRIS**                          | Code IRIS : plus de 60 modalités, à analyser pour regroupement.                                   |
+                | **CODE_IRIS**                     | Concaténation INSEE + IRIS : environ 500 modalités, à analyser pour regroupement.               |
+                | **TYP_IRIS_x**                    | Modalités : `'H'`, `'Z'`, `'D'`. (H habitat, D divers et Z pour les communes non découpées en IRIS)                                                  |
+                | **TYP_IRIS_y**                    | Modalités : `'H'`, `'Z'`. (H habitat, Z pour les communes non découpées en IRIS)                                                        |
+                | **GRD_QUART**                     | Concaténation INSEE + numéro de quartier. À transformer en variable catégorielle.                 |
+                | **UU2010**                        | Code postal version 2010 : plus de 44 modalités, à analyser pour regroupement.                   |
+                | **REG**                          | Région À traiter comme catégorielle.                        |
+                | **DEP**                          | Département À traiter comme catégorielle.                   |
+                | **loyer_m2_median_n6**             | Moyenne du loyer au m² (base 6).                                                                     |
+                | **loyer_m2_median_n7**             | Moyenne du loyer au m² (base 7).                                                                     |
+                | **nb_log_n6**                     | Nombre de logements pour la moyenne `n6`.                                                             |
+                | **nb_log_n7**                     | Nombre de logements pour la moyenne `n7`.                                                             |
+                | **taux_rendement_n6**               | Taux de rendement basé sur la moyenne `n6`.                                                            |
+                | **taux_rendement_n7**               | Taux de rendement basé sur la moyenne `n7`.                                                            |
+                | **prix_m2_vente**                  | Prix au m² : prix_bien / surface. Variable lié à la cible donc à supprimer                                         |
+                """)
 
-        quali = [c for c in ["typedebien_lite", "classeenergie", "ges"] if c in raw.columns]
-        for q in quali:
-            st.subheader(f"Prix vs variable qualitative : {q}")
-            fig, ax = plt.subplots(figsize=(8, 4))
-            tmp = raw[[q, "prix_bien"]].dropna().copy()
-            top_cat = tmp[q].value_counts().head(10).index
-            tmp = tmp[tmp[q].isin(top_cat)]
-            sns.boxplot(data=tmp[tmp["prix_bien"] < 1_000_000], x=q, y="prix_bien", ax=ax)
-            plt.xticks(rotation=25)
-            st.pyplot(fig)
+        st.markdown("---")
+        st.header("DataViz'")
+
+        st.subheader("Variable cible : prix_bien")
+        fig, ax = plt.subplots(figsize=(20, 8))
+        sns.histplot(data=raw, x="prix_bien", bins=60, kde=True, ax=ax)
+        ax.set_title("Distribution de la variable prix_bien")
+        st.pyplot(fig)
+
+        with st.expander("Corrélation des variables quantitatives"):
+            numerical_vars = raw.select_dtypes(include=['int64', 'float64'])
+            corr_matrix = numerical_vars.corr().abs()
+            plt.figure(figsize=(20, 8))
+            sns.heatmap(corr_matrix, annot=True, fmt=".2f", cmap='coolwarm', linewidths=0.5, annot_kws={"fontsize":7})
+            plt.title("Matrice des coeff de corrélation en valeur absolue pour les variables numériques")
+            st.pyplot(plt)
+
+            st.subheader("Coefficient de corrélation avec la variable cible prix_bien")
+            st.dataframe(corr_matrix['prix_bien'].drop('prix_bien').sort_values(ascending=False))
+
+        st.subheader("Focus sur les variables surface et nb_pieces")
+
+        c1, c2 = st.columns(2)
+
+        fig, ax = plt.subplots(figsize=(20, 8))
+        sns.regplot(data=raw, x='surface', y='prix_bien', order = 1, marker="x", color=".3", line_kws=dict(color="r"), x_estimator=np.median)
+        ax.set_title('Prix médian par valeur de surface')
+        c1.pyplot(fig)
+
+        fig, ax = plt.subplots(figsize=(20, 8))
+        sns.histplot(data=raw, x="surface", bins=60, kde=True, ax=ax)
+        ax.set_title("Distribution de la variable surface")
+        c2.pyplot(fig)
+
+
+        fig, ax = plt.subplots(figsize=(20, 8))
+        sns.regplot(data=raw[raw.surface <= 250], x='surface', y='prix_bien', order = 1, marker="x", color=".3", line_kws=dict(color="r"), x_estimator=np.median)
+        ax.set_title('Prix médian par valeur de surface (Focus - 250m²)')
+        c1.pyplot(fig)
+
+        fig, ax = plt.subplots(figsize=(20, 8))
+        sns.histplot(data=raw[raw.surface <= 250], x="surface", bins=60, kde=True, ax=ax)
+        ax.set_title("Distribution de la variable surface (Focus - 250 m²)")
+        c2.pyplot(fig)
+
+        fig, ax = plt.subplots(figsize=(20, 8))
+        sns.regplot(data=raw, x='nb_pieces', y='prix_bien', order = 1, marker="x", color=".3", line_kws=dict(color="r"), x_estimator=np.median)
+        ax.set_title('Prix médian par valeur de nb_pieces')
+        c1.pyplot(fig)
+
+        fig, ax = plt.subplots(figsize=(20, 8))
+        sns.histplot(data=raw, x="nb_pieces", bins=60, kde=True, ax=ax)
+        ax.set_title("Distribution de la variable nb_pieces")
+        c2.pyplot(fig)
+
+
+        with st.expander("Corrélation des variables qualitatives"):
+            st.subheader("Matrice de corrélation de Spearman sur les variables qualitatives")
+            categorical_vars = raw.select_dtypes(include=['object']).columns
+            categorical_as_num = raw[categorical_vars].apply(lambda col: col.astype('category').cat.codes)
+            corr_spearman = pd.concat([categorical_as_num, raw['prix_bien']], axis=1).corr(method='spearman')
+            corr_with_target = corr_spearman['prix_bien'].drop('prix_bien')
+            corr_with_target_sorted = corr_with_target.abs().sort_values(ascending=False)
+            st.dataframe(corr_with_target_sorted)
+
+        st.subheader("Focus sur les variables typedebien_lite, ascenseur et TYP_IRIS_x")
+        fig, ax = plt.subplots(figsize=(20, 8))
+        sns.histplot(data=raw, x="prix_bien", hue="typedebien_lite", bins=60, kde=True, ax=ax)
+        ax.set_title("Distribution de la variable prix_bien par type de bien Appartements / Maisons")
+        st.pyplot(fig)
+
+        fig, ax = plt.subplots(figsize=(20, 8))
+        sns.histplot(data=raw, x="prix_bien", hue="ascenseur", bins=60, kde=True, ax=ax)
+        ax.set_title("Distribution de la variable prix_bien par ascenseur False / True (Quelques NA)")
+        st.pyplot(fig)
+
+        fig, ax = plt.subplots(figsize=(20, 8))
+        sns.histplot(data=raw, x="prix_bien", hue="TYP_IRIS_x", bins=60, kde=True, ax=ax)
+        ax.set_title("Distribution de la variable prix_bien par TYP_IRIS_x")
+        st.pyplot(fig)
+
+        with st.expander("Positionnement des annonces sur la carte du Haut-Rhin"):
+            if all(c in raw.columns for c in ["mapCoordonneesLatitude", "mapCoordonneesLongitude"]):
+                map_df = raw.copy().reset_index().rename(columns={"index": "idannonce"})
+                view = pdk.ViewState(latitude=float(map_df["mapCoordonneesLatitude"].median()), longitude=float(map_df["mapCoordonneesLongitude"].median()), zoom=8)
+                layer = pdk.Layer(
+                    "ScatterplotLayer",
+                    data=map_df,
+                    get_position="[mapCoordonneesLongitude, mapCoordonneesLatitude]",
+                    get_radius=80,
+                    pickable=True,
+                    get_fill_color=[0, 102, 255, 220]
+                )
+                st.pydeck_chart(pdk.Deck(
+                    map_style=None,
+                    initial_view_state=view,
+                    layers=[layer],
+                ))
+            else:
+                st.info("Carte indisponible : mapCoordonneesLatitude/mapCoordonneesLongitude manquantes.")
+
+
 
 # ==========================================================
 # SECTION 2
 # ==========================================================
 elif section == "2. Méthodologie détaillée":
-    st.header("2) Méthodologie détaillée (avec extraits de code)")
+    st.header("2) Méthodologie détaillée")
 
-    st.markdown("### 2.1 Nettoyage")
-    st.code(
-        """# suppression colonnes quasi vides / fuite cible
-cols_to_drop = ["prix_m2_vente", "reference", ...]
-df = df.drop(columns=cols_to_drop, errors="ignore")""",
-        language="python"
-    )
+    with st.expander("2.1 Suppression de variables"):
+        st.code(
+            """
+    # suppression colonnes quasi vides / fuite cible
+    col_na_prct = df_ventes_raw.isna().sum()/df_ventes_raw.shape[0] * 100
+    to_delete = col_na_prct[col_na_prct > 80].index.to_list()
+    to_delete.append('prix_m2_vente')
+    to_delete.append('typedebien')
+    to_delete.append('type_annonceur')
+    to_delete += [ column for column in df_ventes_raw.columns if "n6" in column]
 
-    st.markdown("### 2.2 Imputation custom KNN")
-    st.code(
-        """# voisinage par type de bien + zone + nb pièces
-# KNN regressif / majoritaire selon variable
-for col in cols_with_na:
-    df[col] = custom_knn_impute(df, group_cols=["typedebien_lite","nbpieces"])""",
-        language="python"
-    )
+    def clean_df(df: pd.DataFrame):
+        # On supprime les colonnes identifiées précédement
+        df_cleaned = df.drop(to_delete, axis=1)
 
-    st.markdown("### 2.3 Outliers")
-    st.code(
-        """# filtrage quantiles
-q_low, q_hi = df["surface"].quantile([0.01, 0.99])
-df = df[(df["surface"] >= q_low) & (df["surface"] <= q_hi)]""",
-        language="python"
-    )
+        # On transform en Int des colonnes déclarées en float mais n'ayant que des int
+        valeurs_manq_resid_quanti = [col for  col in df_cleaned.select_dtypes(exclude='object').columns if df_cleaned[col].isna().sum() > 0]    
+        col_float = df_cleaned[valeurs_manq_resid_quanti].select_dtypes(include='float64').columns
+        for col in col_float:
+            array_col = np.array(df_cleaned[df_cleaned[col].notna()][col]) 
+            array_col_round = np.round(array_col)
+            array_real_float = array_col[array_col != array_col_round]
+            if len(array_real_float) == 0:
+                df_cleaned[col] = df_cleaned[col].astype('Int64')
+        # on transforme les colonnes quali n'ayant en fait que deux modalités
+        if 'cave' in df_cleaned.columns:
+            df_cleaned["cave"] = df_cleaned["cave"].astype('Int64')
+        if 'ascenseur' in df_cleaned.columns:
+            df_cleaned["ascenseur"] = df_cleaned["ascenseur"].astype('Int64')
+        if 'logement_neuf' in df_cleaned.columns:
+            df_cleaned["logement_neuf"] = df_cleaned["logement_neuf"].replace({'n': False, 'o': True}).astype('Int64')
+
+        return df_cleaned
+
+    df_ventes_clean = clean_df(df_ventes_raw)
+    # 13 variables supprimées
+    """, language="python")
+        
+    with st.expander("2.2 Train / Test split"):
+        st.code(
+            """
+target_feature = 'prix_bien'
+target = df_ventes_clean[target_feature]
+data = df_ventes_clean.drop(target_feature, axis=1)
+
+X_train, X_test, y_train, y_test = train_test_split(data, target, test_size=0.2, random_state=42) 
+            """, language="python")
+
+    with st.expander("2.3 KNNImputer custom pour remplir les NA quali et quanti"):
+        st.code(
+            """
+# KNN (k=10) sur le type de bien, latitude, longitude et nombre de pièces
+class KNNImputerCustom(BaseEstimator, TransformerMixin):
+def __init__(self, type_col="typedebien_lite", lat_col="mapCoordonneesLatitude", lon_col="mapCoordonneesLongitude", pieces_col="nb_pieces", k=10):
+    self.type_col = type_col
+    self.lat_col = lat_col
+    self.lon_col = lon_col
+    self.pieces_col = pieces_col
+    self.k = k
+    self.fitted = False
+
+def fit(self, X, y=None):
+    self.df_train_ = X.copy()
+    self.numeric_cols_ = X.select_dtypes(exclude="object").columns.tolist()
+    self.default_mean_ = {col: X[col].mean() for col in self.numeric_cols_}
+    self.imputer_ = KNNImputer()
+    self.quali_cols_ = X.select_dtypes(include="object").columns.tolist()
+    self.default_mode_ = {col: X[col].mode()[0] for col in self.quali_cols_}
+    self.fitted = True
+    
+    return self
+
+def transform(self, X):
+    if not(self.fitted):
+        raise NotFittedError("This KNNImputerCustomed instance is not fitted yet. Call 'fit' with appropriate arguments before using this estimator.")
+    X = X.copy()
+    # First we fill the numeric columns
+    for col in self.numeric_cols_:
+        if X[col].isna().sum() == 0:
+            continue
+        cols = [col, self.pieces_col, self.lat_col, self.lon_col]
+        df_extract = X[[self.type_col] + cols]
+        df_extract_train = self.df_train_ [[self.type_col] + cols]
+        for typ in ["a", "m"]:
+            subset = df_extract[df_extract[self.type_col] == typ][cols]
+            if subset.shape[0] == 0:
+                continue
+            apply_default = True
+            subset_train = df_extract_train[df_extract_train[self.type_col] == typ][cols]
+            if subset_train.shape[0] != 0:
+                self.imputer_.fit(subset_train)
+                imputed = self.imputer_.transform(subset)
+                if imputed.shape[1] == len(cols):
+                    imputed_df = pd.DataFrame(imputed, columns=cols, index=subset.index)
+                    apply_default = False
+            if apply_default:
+                if X[col].dtype in ["int64", "Int64"]:
+                    X.loc[subset.index, col] = self.default_mean_[col].astype("int64")
+                else:
+                    X.loc[subset.index, col] = self.default_mean_[col]
+            else:
+                if X[col].dtype in ["int64", "Int64"]:
+                    X.loc[imputed_df.index, col] = imputed_df[col].round().astype("int64")
+                else:
+                    X.loc[imputed_df.index, col] = imputed_df[col]
+
+    #Secondly we fill the qualitative columns
+    index_na = X[X[self.quali_cols_].isna().any(axis=1)].index
+    for idx in index_na:
+        lat = X.loc[idx, self.lat_col]
+        lon = X.loc[idx, self.lon_col]
+        nbp = X.loc[idx, self.pieces_col]
+        typ = X.loc[idx, self.type_col]
+        neighbours = self.df_train_[
+            (self.df_train_[self.pieces_col] == nbp) &
+            (self.df_train_[self.type_col] == typ)
+        ]
+        distances = (lat - neighbours[self.lat_col])**2 + (lon - neighbours[self.lon_col])**2
+        for col in self.quali_cols_:
+            if pd.isna(X.loc[idx, col]):
+                valid = neighbours[neighbours[col].notna()]
+                if valid.shape[0] > 0:
+                    idx_neigh = distances[valid.index].sort_values().iloc[:self.k].index
+                    X.loc[idx, col] = neighbours.loc[idx_neigh][col].mode()[0]
+                else:
+                    X.loc[idx, col] = self.default_mode_[col]
+    
+    return X""",
+            language="python"
+        )
+
+    with st.expander("2.4 Fit & Transform du KNNImputer"):
+        st.code(
+            """
+knn_imputer_custom = KNNImputerCustom()
+X_train_transformed = knn_imputer_custom.fit_transform(X_train)
+X_test_transformed = knn_imputer_custom.transform(X_test)
+            """, language="python"
+        )
+
+    with st.expander("2.5 Outliers"):
+        st.code(
+            """# filtrage quantiles
+    q_low, q_hi = df["surface"].quantile([0.01, 0.99])
+    df = df[(df["surface"] >= q_low) & (df["surface"] <= q_hi)]""",
+            language="python"
+        )
 
     st.markdown("### 2.4 Feature engineering")
     st.code(
@@ -576,4 +852,4 @@ elif section == "7. Prédiction unitaire avancée":
     st.pyplot(fig)
 
 st.markdown("---")
-st.caption("Soutenance Data Science • Compagnon Immobilier")
+st.caption("Soutenance Projet Compagnon Immobilier — Data Scientist #2 Orange")
