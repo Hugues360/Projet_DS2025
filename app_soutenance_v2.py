@@ -68,6 +68,7 @@ def error_band(pct):
 # DATA
 # ==========================================================
 
+@st.cache_data
 def load_data():
     data = {}
 
@@ -138,7 +139,6 @@ def train_models(X_train_scaled, y_train):
 
     return models
 
-
 def build_predictions(models, X_test_scaled, y_test):
     pred_store = {}
     for name, model in models.items():
@@ -166,12 +166,6 @@ if any(x is None for x in [X_train_scaled, X_test_scaled, X_train, X_test, y_tra
     st.error("Fichiers manquants. Vérifie les CSV exportés depuis le notebook.")
     st.stop()
 
-# harmonisation index
-#for d in [X_train_scaled, X_test_scaled, X_train, X_test]:
-#    d.index = d.index.astype(str)
-#for s in [y_train, y_test]:
-#    s.index = s.index.astype(str)
-
 models = train_models(X_train_scaled, y_train)
 pred_df = build_predictions(models, X_test_scaled, y_test)
 
@@ -188,7 +182,7 @@ section = st.sidebar.radio(
         "5. Comparaisons des performances (Focus : surface et type de bien)",
         "6. Interprétabilité avec SHAP",
         "7. Limites & perspectives",
-        "8. Démonstration intéractive"
+        "8. Démonstration interactive"
     ]
 )
 
@@ -302,7 +296,7 @@ if section == "1. Contexte & données":
 
         st.subheader("Variable cible : prix_bien")
         fig, ax = plt.subplots(figsize=(20, 8))
-        sns.histplot(data=raw, x="prix_bien", bins=60, kde=True, ax=ax)
+        sns.histplot(data=raw, x="prix_bien", bins=60, kde=True, ax=ax, color="#FF7900")
         ax.set_title("Distribution de la variable prix_bien")
         st.pyplot(fig)
 
@@ -322,33 +316,33 @@ if section == "1. Contexte & données":
         c1, c2 = st.columns(2)
 
         fig, ax = plt.subplots(figsize=(20, 8))
-        sns.regplot(data=raw, x='surface', y='prix_bien', order = 1, marker="x", color=".3", line_kws=dict(color="r"), x_estimator=np.median)
+        sns.regplot(data=raw, x='surface', y='prix_bien', order = 1, marker="x", color=".3", line_kws=dict(color="#FF7900"), x_estimator=np.median)
         ax.set_title('Prix médian par valeur de surface')
         c1.pyplot(fig)
 
         fig, ax = plt.subplots(figsize=(20, 8))
-        sns.histplot(data=raw, x="surface", bins=60, kde=True, ax=ax)
+        sns.histplot(data=raw, x="surface", bins=60, kde=True, ax=ax, color="#FF7900")
         ax.set_title("Distribution de la variable surface")
         c2.pyplot(fig)
 
 
         fig, ax = plt.subplots(figsize=(20, 8))
-        sns.regplot(data=raw[raw.surface <= 250], x='surface', y='prix_bien', order = 1, marker="x", color=".3", line_kws=dict(color="r"), x_estimator=np.median)
+        sns.regplot(data=raw[raw.surface <= 250], x='surface', y='prix_bien', order = 1, marker="x", color=".3", line_kws=dict(color="#FF7900"), x_estimator=np.median)
         ax.set_title('Prix médian par valeur de surface (Focus - 250m²)')
         c1.pyplot(fig)
 
         fig, ax = plt.subplots(figsize=(20, 8))
-        sns.histplot(data=raw[raw.surface <= 250], x="surface", bins=60, kde=True, ax=ax)
+        sns.histplot(data=raw[raw.surface <= 250], x="surface", bins=60, kde=True, ax=ax, color="#FF7900")
         ax.set_title("Distribution de la variable surface (Focus - 250 m²)")
         c2.pyplot(fig)
 
         fig, ax = plt.subplots(figsize=(20, 8))
-        sns.regplot(data=raw, x='nb_pieces', y='prix_bien', order = 1, marker="x", color=".3", line_kws=dict(color="r"), x_estimator=np.median)
+        sns.regplot(data=raw, x='nb_pieces', y='prix_bien', order = 1, marker="x", color=".3", line_kws=dict(color="#FF7900"), x_estimator=np.median)
         ax.set_title('Prix médian par valeur de nb_pieces')
         c1.pyplot(fig)
 
         fig, ax = plt.subplots(figsize=(20, 8))
-        sns.histplot(data=raw, x="nb_pieces", bins=60, kde=True, ax=ax)
+        sns.histplot(data=raw, x="nb_pieces", bins=60, kde=True, ax=ax, color="#FF7900")
         ax.set_title("Distribution de la variable nb_pieces")
         c2.pyplot(fig)
 
@@ -388,7 +382,7 @@ if section == "1. Contexte & données":
                     get_position="[mapCoordonneesLongitude, mapCoordonneesLatitude]",
                     get_radius=80,
                     pickable=True,
-                    get_fill_color=[0, 102, 255, 220]
+                    get_fill_color=[255, 121, 0, 190]
                 )
                 st.pydeck_chart(pdk.Deck(
                     map_style=None,
@@ -956,13 +950,11 @@ Nos variables sont ainsi plus ou moins explicatives selon la longeur et la direc
             axes.set_xlim(-1, 1)
             axes.set_ylim(-1, 1)
 
-            # Affichage des variables
             for j in X_train_scaled.columns:
                 if max(np.abs(corr.loc[j, 0]), np.abs(corr.loc[j, 1])) > 0:
-                    plt.annotate(j, (corr.loc[j, 0], corr.loc[j, 1]), color='#091158')
-                    plt.arrow(0, 0, corr.loc[j, 0]*0.95, corr.loc[j, 1]*0.95, alpha=0.5, head_width=0.03, color='b')
+                    plt.annotate(j, (corr.loc[j, 0], corr.loc[j, 1]), color='#FF7900')
+                    plt.arrow(0, 0, corr.loc[j, 0]*0.95, corr.loc[j, 1]*0.95, alpha=0.5, head_width=0.03, color='#FF7900')
 
-            # Ajout des axes
             plt.plot([-1, 1], [0, 0], color='silver', linestyle='-', linewidth=1)
             plt.plot([0, 0], [-1, 1], color='silver', linestyle='-', linewidth=1)
 
@@ -971,8 +963,7 @@ Nos variables sont ainsi plus ou moins explicatives selon la longeur et la direc
             plt.text(-0.65, 1, "← ← Axe de prix croissant ← ←", ha='left', va='bottom', transform_rotates_text=True, rotation=-55, rotation_mode='anchor', color='red')
             plt.plot([-1,1], [1.5,-1.5], color='red', linestyle='--', linewidth=1)
 
-            # Cercle et légendes
-            cercle = plt.Circle((0, 0), 1, color='#16E4CA', fill=False)
+            cercle = plt.Circle((0, 0), 1, color='#4BB4E6', fill=False)
             axes.add_artist(cercle)
             plt.xlabel('Component 0')
             plt.ylabel('Component 1')
@@ -1195,7 +1186,7 @@ r2 = r2_score(y_test, y_pred)
         c3.metric("R2", 0.6972)
 
 
-    with st.expander("RandomForestRegressor() avec tuning des parametres"):
+    with st.expander("RandomForestRegressor() avec tuning des paramètres"):
         st.code(
             """
 model_rfr = RandomForestRegressor(
@@ -1224,7 +1215,7 @@ r2 = r2_score(y_test, y_pred)
         c3.metric("R2", 0.8850)
 
 
-    with st.expander("XGBRegressor() avec tuning des parametres"):
+    with st.expander("XGBRegressor() avec tuning des paramètres"):
         st.code(
             """
 model_xgbr_tunning = XGBRegressor(
@@ -1310,7 +1301,6 @@ elif section == "5. Comparaisons des performances (Focus : surface et type de bi
     if len(selected_idx) < 20:
         st.warning("Pas assez d'observations avec ces filtres.")
     else:
-        # Distribution erreurs comparée tous modèles
         err_df = []
         for name in models.keys():
             e = (pred_df.loc[selected_idx, name] - pred_df.loc[selected_idx, "y_true"]).values
@@ -1322,7 +1312,6 @@ elif section == "5. Comparaisons des performances (Focus : surface et type de bi
         ax.set_title("Distribution des erreurs par modèle (focus filtré)")
         st.pyplot(fig)
 
-        # MAE par modèle sur focus
         mae_rows = []
         for name in models.keys():
             y_t = pred_df.loc[selected_idx, "y_true"].values
@@ -1409,22 +1398,19 @@ elif section == "7. Limites & perspectives":
 # ==========================================================
 # SECTION 8
 # ==========================================================
-elif section == "8. Démonstration intéractive":
-    st.header("8) Démonstration intéractive")
+elif section == "8. Démonstration interactive":
+    st.header("8) Démonstration interactive")
 
-    # Choix modèle
     default_model = "XGBRegressor_tuned" if "XGBRegressor_tuned" in models else list(models.keys())[0]
     model_name = st.selectbox("Modèle", list(models.keys()), index=list(models.keys()).index(default_model))
     model = models[model_name]
 
-    # Prépare table locale
     df_local = X_test.copy()
     df_local["y_true"] = y_test
     df_local["y_pred"] = pred_df[model_name]
     df_local["abs_error"] = (df_local["y_pred"] - df_local["y_true"]).abs()
     df_local["pct_error"] = df_local["abs_error"] / df_local["y_true"].replace(0, np.nan) * 100
 
-    # Filtres type + surface + pièces
     col_f1, col_f2, col_f3 = st.columns(3)
     with col_f1:
         type_filter = st.selectbox("Type de bien", ["Tous", "Appartements", "Maisons"])
@@ -1435,8 +1421,8 @@ elif section == "8. Démonstration intéractive":
         else:
             surface_range = None
     with col_f3:
-        if "nbpieces" in df_local.columns:
-            pmin, pmax = int(np.nanmin(df_local["nbpieces"])), int(np.nanmax(df_local["nbpieces"]))
+        if "nb_pieces" in df_local.columns:
+            pmin, pmax = int(np.nanmin(df_local["nb_pieces"])), int(np.nanmax(df_local["nb_pieces"]))
             pieces_range = st.slider("Nb pièces", pmin, pmax, (pmin, pmax))
         else:
             pieces_range = None
@@ -1449,27 +1435,25 @@ elif section == "8. Démonstration intéractive":
 
     if surface_range and "surface" in df_local.columns:
         mask &= df_local["surface"].between(surface_range[0], surface_range[1], inclusive="both")
-    if pieces_range and "nbpieces" in df_local.columns:
-        mask &= df_local["nbpieces"].between(pieces_range[0], pieces_range[1], inclusive="both")
+    if pieces_range and "nb_pieces" in df_local.columns:
+        mask &= df_local["nb_pieces"].between(pieces_range[0], pieces_range[1], inclusive="both")
 
     df_f = df_local[mask].copy()
     if len(df_f) == 0:
         st.warning("Aucune annonce avec ces filtres.")
         st.stop()
 
-    # KPI distribution erreurs
-    k1, k2, k3 = st.columns(3)
-    k1.metric("% annonces <10% erreur", f"{(df_f['pct_error'] < 10).mean()*100:.1f}%")
-    k2.metric("% annonces <20% erreur", f"{(df_f['pct_error'] < 20).mean()*100:.1f}%")
-    k3.metric("% annonces >=20% erreur", f"{(df_f['pct_error'] >= 20).mean()*100:.1f}%")
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Nombre d'annonces filtrées", len(df_f))
+    k2.metric("% annonces <10% erreur", f"{(df_f['pct_error'] < 10).mean()*100:.1f}%")
+    k3.metric("% annonces <20% erreur", f"{(df_f['pct_error'] < 20).mean()*100:.1f}%")
+    k4.metric("% annonces >=20% erreur", f"{(df_f['pct_error'] >= 20).mean()*100:.1f}%")
 
     with st.expander("Focus sur un bien"):
-        # Tri ID par écart
         order = st.radio("Tri par % écart absolu", ["Croissant", "Décroissant"], horizontal=True)
         asc = True if order == "Croissant" else False
         df_f = df_f.sort_values("pct_error", ascending=asc)
 
-        # Label ID avec icône + erreur
         labels = []
         for idx_, row in df_f.head(3000).iterrows():
             ico = icon_type(row)
@@ -1489,7 +1473,6 @@ elif section == "8. Démonstration intéractive":
         c2.metric("Prix réel", euro(real_price))
         c3.metric("Écart", f"{euro(abs_error)} ({pct_error:.2f}%)")
 
-        # Caractéristiques + carte voisins
         left, right = st.columns([1, 1.2])
 
         with left:
@@ -1504,7 +1487,7 @@ elif section == "8. Démonstration intéractive":
 
                 neigh = df_f.copy()
                 neigh["dist2"] = (neigh["mapCoordonneesLatitude"] - lat0)**2 + (neigh["mapCoordonneesLongitude"] - lon0)**2
-                neigh = neigh.sort_values("dist2").head(6).copy()  # selected + 5 voisins
+                neigh = neigh.sort_values("dist2").head(6).copy()
                 neigh["is_selected"] = neigh.index == selected_idx
                 neigh["tooltip"] = neigh.apply(
                     lambda r: f"ID={r.name}<br>Prix réel={euro(r['y_true'])}<br>Prix prédit={euro(r['y_pred'])}<br>Err={r['pct_error']:.1f}%",
@@ -1533,7 +1516,6 @@ elif section == "8. Démonstration intéractive":
             else:
                 st.info("Colonnes mapCoordonneesLatitude/mapCoordonneesLongitude indisponibles.")
 
-        # SHAP waterfall unitaire
         st.subheader("SHAP Waterfall (annonce sélectionnée)")
         with st.spinner("Calcul SHAP unitaire..."):
             explainer = shap.Explainer(model, X_train_scaled.iloc[:1000])
@@ -1545,7 +1527,6 @@ elif section == "8. Démonstration intéractive":
         st.pyplot(fig)
 
 
-    # Carte globale erreurs colorées
     st.subheader("Carte globale des erreurs (vert/orange/rouge)")
     if all(c in df_f.columns for c in ["mapCoordonneesLatitude", "mapCoordonneesLongitude"]):
         map_df = df_f.copy().reset_index().rename(columns={"index": "idannonce"})
