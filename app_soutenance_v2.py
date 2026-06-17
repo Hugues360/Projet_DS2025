@@ -188,7 +188,7 @@ section = st.sidebar.radio(
         "5. Comparaisons des performances (Focus : surface et type de bien)",
         "6. Interprétabilité avec SHAP",
         "7. Limites & perspectives",
-        "8. Prédiction unitaire avancée"
+        "8. Démonstration intéractive"
     ]
 )
 
@@ -1409,8 +1409,8 @@ elif section == "7. Limites & perspectives":
 # ==========================================================
 # SECTION 8
 # ==========================================================
-elif section == "8. Prédiction unitaire avancée":
-    st.header("8) Prédiction unitaire avancée")
+elif section == "8. Démonstration intéractive":
+    st.header("8) Démonstration intéractive")
 
     # Choix modèle
     default_model = "XGBRegressor_tuned" if "XGBRegressor_tuned" in models else list(models.keys())[0]
