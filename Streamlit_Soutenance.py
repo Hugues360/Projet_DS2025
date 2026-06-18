@@ -1388,11 +1388,12 @@ elif section == "7. Limites & perspectives":
     st.markdown("""
     **Limites**
     - Prix d’annonce vs prix de transaction
-    - Données bruitées, hétérogènes
+    - Données hétérogènes
     - Sensibilité aux biens atypiques
     
     **Perspectives**
     - Ajout données externes pour mieux prédire les maisons
+    - Tester DecisionTreeRegressor (jugé non nécessaire car XGBoost utilise déjà des arbres de décision)
     """)
 
 # ==========================================================
