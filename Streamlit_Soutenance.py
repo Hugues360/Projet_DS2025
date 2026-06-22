@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
+import time
 
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.linear_model import LinearRegression
@@ -19,6 +20,8 @@ import shap
 import pydeck as pdk
 from streamlit_plotly_events import plotly_events
 import plotly.express as px
+from streamlit_autorefresh import st_autorefresh
+import streamlit.components.v1 as components
 
 # ==========================================================
 # CONFIG
@@ -64,10 +67,15 @@ def error_band(pct):
         return "orange"
     return "red"
 
+def format_mmss(seconds: int) -> str:
+    seconds = max(0, int(seconds))
+    mm = seconds // 60
+    ss = seconds % 60
+    return f"{mm:02d}:{ss:02d}"
+
 # ==========================================================
 # DATA
 # ==========================================================
-
 @st.cache_data
 def load_data():
     data = {}
@@ -184,6 +192,219 @@ section = st.sidebar.radio(
         "7. Limites & perspectives",
         "8. Démonstration interactive"
     ]
+)
+
+# ==========================================================
+# TIMER FRONT (sans rerun global chaque seconde)
+# ==========================================================
+SECTION_DURATIONS_SEC = {
+    "1. Contexte & données": 3 * 60,
+    "2. Préprocessing & Feature engineering": 3 * 60,
+    "3. Méthodes de sélection de features": 2 * 60,
+    "4. Modélisation (LR, RFR & XGBR)": 3 * 60,
+    "5. Comparaisons des performances (Focus : surface et type de bien)": 3 * 60,
+    "6. Interprétabilité avec SHAP": 2 * 60,
+    "7. Limites & perspectives": 1 * 60,
+    "8. Démonstration interactive": 3 * 60,
+}
+GLOBAL_DURATION_SEC = 20 * 60
+
+def format_mmss(seconds: int) -> str:
+    seconds = max(0, int(seconds))
+    mm = seconds // 60
+    ss = seconds % 60
+    return f"{mm:02d}:{ss:02d}"
+
+# ---------- État SECTION ----------
+if "timer_current_section" not in st.session_state:
+    st.session_state.timer_current_section = section
+if "section_start_ts" not in st.session_state:
+    st.session_state.section_start_ts = int(time.time())
+if "section_paused" not in st.session_state:
+    st.session_state.section_paused = False
+if "section_pause_started_ts" not in st.session_state:
+    st.session_state.section_pause_started_ts = None
+if "section_paused_acc" not in st.session_state:
+    st.session_state.section_paused_acc = 0  # secondes cumulées de pause
+
+# ---------- État GLOBAL ----------
+if "global_start_ts" not in st.session_state:
+    st.session_state.global_start_ts = int(time.time())
+if "global_paused" not in st.session_state:
+    st.session_state.global_paused = False
+if "global_pause_started_ts" not in st.session_state:
+    st.session_state.global_pause_started_ts = None
+if "global_paused_acc" not in st.session_state:
+    st.session_state.global_paused_acc = 0  # secondes cumulées de pause
+
+# Si changement de section => reset chrono section
+if st.session_state.timer_current_section != section:
+    st.session_state.timer_current_section = section
+    st.session_state.section_start_ts = int(time.time())
+    st.session_state.section_paused = False
+    st.session_state.section_pause_started_ts = None
+    st.session_state.section_paused_acc = 0
+
+# ---------- Contrôles SECTION (rerun ponctuel uniquement au clic) ----------
+st.sidebar.markdown("### ⏱️ Chrono section")
+c1, c2, c3 = st.sidebar.columns(3)
+
+if c1.button("⏸️ Pause", use_container_width=True):
+    if not st.session_state.section_paused:
+        st.session_state.section_paused = True
+        st.session_state.section_pause_started_ts = int(time.time())
+        st.rerun()
+
+if c2.button("▶️ Reprise", use_container_width=True):
+    if st.session_state.section_paused:
+        delta = int(time.time()) - st.session_state.section_pause_started_ts
+        st.session_state.section_paused_acc += delta
+        st.session_state.section_paused = False
+        st.session_state.section_pause_started_ts = None
+        st.rerun()
+
+if c3.button("🔄 Reset", use_container_width=True):
+    st.session_state.section_start_ts = int(time.time())
+    st.session_state.section_paused = False
+    st.session_state.section_pause_started_ts = None
+    st.session_state.section_paused_acc = 0
+    st.rerun()
+
+if st.session_state.section_paused:
+    st.sidebar.info("Chrono section en pause")
+
+st.sidebar.markdown("---")
+
+# ---------- Contrôles GLOBAL (rerun ponctuel uniquement au clic) ----------
+st.sidebar.markdown("### 🕒 Progression globale (20 min)")
+g1, g2, g3 = st.sidebar.columns(3)
+
+if g1.button("⏸️ Pause G", use_container_width=True):
+    if not st.session_state.global_paused:
+        st.session_state.global_paused = True
+        st.session_state.global_pause_started_ts = int(time.time())
+        st.rerun()
+
+if g2.button("▶️ Reprise G", use_container_width=True):
+    if st.session_state.global_paused:
+        delta = int(time.time()) - st.session_state.global_pause_started_ts
+        st.session_state.global_paused_acc += delta
+        st.session_state.global_paused = False
+        st.session_state.global_pause_started_ts = None
+        st.rerun()
+
+if g3.button("🔄 Reset G", use_container_width=True):
+    st.session_state.global_start_ts = int(time.time())
+    st.session_state.global_paused = False
+    st.session_state.global_pause_started_ts = None
+    st.session_state.global_paused_acc = 0
+    st.rerun()
+
+if st.session_state.global_paused:
+    st.sidebar.info("Chrono global en pause")
+
+# ---------- Valeurs "backend" pour affichage initial ----------
+section_duration = int(SECTION_DURATIONS_SEC.get(section, 180))
+global_duration = int(GLOBAL_DURATION_SEC)
+
+now_ts = int(time.time())
+
+if st.session_state.section_paused:
+    elapsed_section = st.session_state.section_pause_started_ts - st.session_state.section_start_ts - st.session_state.section_paused_acc
+else:
+    elapsed_section = now_ts - st.session_state.section_start_ts - st.session_state.section_paused_acc
+elapsed_section = max(0, int(elapsed_section))
+remaining_section = max(0, section_duration - elapsed_section)
+
+if st.session_state.global_paused:
+    elapsed_global = st.session_state.global_pause_started_ts - st.session_state.global_start_ts - st.session_state.global_paused_acc
+else:
+    elapsed_global = now_ts - st.session_state.global_start_ts - st.session_state.global_paused_acc
+elapsed_global = max(0, int(elapsed_global))
+remaining_global = max(0, global_duration - elapsed_global)
+
+# ---------- Affichage HTML/JS (tick client-side, pas de rerun Python) ----------
+components.html(
+    f"""
+    <div style="font-family: Inter, Segoe UI, sans-serif; padding: 4px 0;">
+      <div style="font-size: 14px; margin-bottom: 6px; color:white;">
+        <b>Temps restant sur la section</b> : <span id="section_left">{format_mmss(remaining_section)}</span> / {format_mmss(section_duration)}
+      </div>
+      <div style="background:#ECECEC; height:10px; border-radius:999px; overflow:hidden; margin-bottom:12px;">
+        <div id="section_bar" style="height:10px; width:{(elapsed_section/section_duration*100 if section_duration else 100):.2f}%; background:#FF7900;"></div>
+      </div>
+
+      <div style="font-size: 14px; margin-bottom: 6px; color:white;">
+        <b>Temps restant au global</b> : <span id="global_left">{format_mmss(remaining_global)}</span> / {format_mmss(global_duration)}
+      </div>
+      <div style="background:#ECECEC; height:10px; border-radius:999px; overflow:hidden;">
+        <div id="global_bar" style="height:10px; width:{(elapsed_global/global_duration*100 if global_duration else 100):.2f}%; background:#4BB4E6;"></div>
+      </div>
+
+      <div id="alerts" style="margin-top:10px; font-size:12px; color:#B00020;"></div>
+    </div>
+
+    <script>
+      const sectionDuration = {section_duration};
+      const sectionStart = {int(st.session_state.section_start_ts)};
+      const sectionPausedAcc = {int(st.session_state.section_paused_acc)};
+      const sectionPaused = {str(st.session_state.section_paused).lower()};
+      const sectionPauseStarted = {int(st.session_state.section_pause_started_ts or 0)};
+
+      const globalDuration = {global_duration};
+      const globalStart = {int(st.session_state.global_start_ts)};
+      const globalPausedAcc = {int(st.session_state.global_paused_acc)};
+      const globalPaused = {str(st.session_state.global_paused).lower()};
+      const globalPauseStarted = {int(st.session_state.global_pause_started_ts or 0)};
+
+      function fmt(sec) {{
+        sec = Math.max(0, Math.floor(sec));
+        const m = String(Math.floor(sec / 60)).padStart(2, "0");
+        const s = String(sec % 60).padStart(2, "0");
+        return `${{m}}:${{s}}`;
+      }}
+
+      function elapsed(startTs, pausedAcc, paused, pauseStartTs) {{
+        const now = Math.floor(Date.now() / 1000);
+        if (paused) return Math.max(0, pauseStartTs - startTs - pausedAcc);
+        return Math.max(0, now - startTs - pausedAcc);
+      }}
+
+      function tick() {{
+        // Section
+        const eSec = elapsed(sectionStart, sectionPausedAcc, sectionPaused, sectionPauseStarted);
+        const leftSec = Math.max(0, sectionDuration - eSec);
+        const pSec = sectionDuration > 0 ? Math.min(100, (eSec / sectionDuration) * 100) : 100;
+
+        document.getElementById("section_left").innerText = fmt(leftSec);
+        document.getElementById("section_bar").style.width = pSec + "%";
+
+        // Global
+        const eGlob = elapsed(globalStart, globalPausedAcc, globalPaused, globalPauseStarted);
+        const leftGlob = Math.max(0, globalDuration - eGlob);
+        const pGlob = globalDuration > 0 ? Math.min(100, (eGlob / globalDuration) * 100) : 100;
+
+        document.getElementById("global_left").innerText = fmt(leftGlob);
+        document.getElementById("global_bar").style.width = pGlob + "%";
+
+        // Alertes visuelles
+        const alerts = [];
+        if (leftSec === 0) alerts.push("Temps section écoulé.");
+        if (leftGlob === 0) alerts.push("Temps global écoulé.");
+        document.getElementById("alerts").innerText = alerts.join(" ");
+      }}
+
+      tick();
+      setInterval(tick, 1000);
+    </script>
+    """,
+    height=150,
+)
+
+# Petit rappel textuel côté page (valeur au dernier rerun utilisateur)
+st.caption(
+    f"⏱️ Section : **{format_mmss(remaining_section)}** "
+    f"| 🕒 Global : **{format_mmss(remaining_global)}**"
 )
 
 # ==========================================================
@@ -391,8 +612,6 @@ if section == "1. Contexte & données":
                 ))
             else:
                 st.info("Carte indisponible : mapCoordonneesLatitude/mapCoordonneesLongitude manquantes.")
-
-
 
 # ==========================================================
 # SECTION 2
@@ -894,7 +1113,6 @@ Nous avons maintenant **97** features dans nos jeux de données X_train et X_tes
 
 
 
-
 # ==========================================================
 # SECTION 3
 # ==========================================================
@@ -1085,8 +1303,6 @@ Nous allons vérifier par la suite si les 13 features communes suffisent à l'en
 """
     )
 
-
-
 # ==========================================================
 # SECTION 4
 # ==========================================================
@@ -1273,7 +1489,7 @@ Dans la section suivante, nous nous concentrerons sur l'analyse des écarts entr
 """
     )
 
-    
+  
 
 # ==========================================================
 # SECTION 5
@@ -1340,6 +1556,7 @@ Au dela de 120 m² les performances de nos prédictions diminuent **fortement** 
 * Ratio x 14 entre les 🏢 Appartements <=120m² (MAE 6K€) et > 170m² (MAE 75K€)
 """
     )
+
 
 # ==========================================================
 # SECTION 6
