@@ -1,4 +1,3 @@
-# app_soutenance.py
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -23,9 +22,6 @@ import plotly.express as px
 from streamlit_autorefresh import st_autorefresh
 import streamlit.components.v1 as components
 
-# ==========================================================
-# CONFIG
-# ==========================================================
 st.set_page_config(
     page_title="Soutenance - Compagnon Immobilier",
     page_icon="🏠",
@@ -34,7 +30,7 @@ st.set_page_config(
 sns.set_style("whitegrid")
 
 # ==========================================================
-# HELPERS
+# FONCTIONS
 # ==========================================================
 def to_series(y):
     if y is None:
@@ -60,22 +56,6 @@ def icon_type(row):
         return "🏠"
     return "🏷️"
 
-def error_band(pct):
-    if pct < 10:
-        return "green"
-    elif pct < 20:
-        return "orange"
-    return "red"
-
-def format_mmss(seconds: int) -> str:
-    seconds = max(0, int(seconds))
-    mm = seconds // 60
-    ss = seconds % 60
-    return f"{mm:02d}:{ss:02d}"
-
-# ==========================================================
-# DATA
-# ==========================================================
 @st.cache_data
 def load_data():
     data = {}
@@ -101,7 +81,6 @@ def load_data():
 def train_models(X_train_scaled, y_train):
     models = {}
 
-    # Baselines
     lr = LinearRegression()
     lr.fit(X_train_scaled, y_train)
     models["LinearRegression"] = lr
@@ -114,7 +93,6 @@ def train_models(X_train_scaled, y_train):
     xgb.fit(X_train_scaled, y_train)
     models["XGBRegressor"] = xgb
 
-    # Tuned
     rf_tuned = RandomForestRegressor(
         n_estimators=1000,
         min_samples_split=5,
@@ -428,7 +406,7 @@ if section == "1. Contexte & données":
         st.subheader("Pour ce projet nous nous basons sur le fichier data/ech_annonces_ventes_68.csv ([Github](https://raw.githubusercontent.com/klopstock-dviz/immo_vis/master/data/ech_annonces_ventes_68.csv))")
 
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Nb annonces", f"{len(raw):,}".replace(",", " "))
+        c1.metric("Nb annonces", len(raw))
         c2.metric("Nb variables", raw.shape[1])
         c3.metric("Variable cible", "prix_bien")
         c4.metric("Période", "2019-2023")
